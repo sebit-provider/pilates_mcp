@@ -146,8 +146,135 @@ export const toolSchemas = [
         programCategories: { type: "array", items: { type: "string" } }
       }
     }
+  },
+  {
+    name: "get_schedule_settings",
+    description: "Return local non-CRM schedule settings such as week display, opening hours, slot minutes, locale, and holiday marking.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} }
+  },
+  {
+    name: "update_schedule_settings",
+    description: "Update center schedule defaults. These are operational settings and must not include member CRM data.",
+    inputSchema: scheduleSettingsSchema()
+  },
+  {
+    name: "inspect_schedule_file",
+    description: "Inspect an existing XLSX schedule file inside the workspace and infer worksheet, used range, day columns, time column, merges, widths, and heights without executing formulas.",
+    inputSchema: { type: "object", required: ["filePath"], additionalProperties: false, properties: { filePath: { type: "string" } } }
+  },
+  {
+    name: "import_schedule_file",
+    description: "Import an existing group/private XLSX schedule into a dirty Schedule Workspace draft while preserving mapping metadata where possible.",
+    inputSchema: { type: "object", required: ["filePath"], additionalProperties: false, properties: { filePath: { type: "string" }, scheduleType: { enum: ["group", "private"] } } }
+  },
+  {
+    name: "create_schedule_template",
+    description: "Create a new unsaved weekly group/private schedule template after required settings are known. Does not save until save_schedule is called.",
+    inputSchema: { type: "object", required: ["scheduleType"], additionalProperties: false, properties: { scheduleType: { enum: ["group", "private"] }, settings: scheduleSettingsSchema() } }
+  },
+  scheduleTypeTool("get_schedule", "Return the current dirty draft or saved schedule template."),
+  {
+    name: "generate_weekly_schedule",
+    description: "Generate an unsaved weekly schedule from the weekly template plus holidays, center closures, and overrides.",
+    inputSchema: {
+      type: "object",
+      required: ["scheduleType", "weekStart"],
+      additionalProperties: false,
+      properties: {
+        scheduleType: { enum: ["group", "private"] },
+        weekStart: { type: "string" },
+        applyHolidays: { type: "boolean" },
+        applyCenterClosures: { type: "boolean" }
+      }
+    }
+  },
+  {
+    name: "set_schedule_slot",
+    description: "Set one group/private schedule slot in the dirty workspace. Conflicts are returned unless overwrite is explicitly true. Only displayName is allowed for private names; no CRM fields.",
+    inputSchema: {
+      type: "object",
+      required: ["scheduleType", "startTime"],
+      additionalProperties: false,
+      properties: {
+        scheduleType: { enum: ["group", "private"] },
+        dayOfWeek: daySchema(),
+        date: { type: "string" },
+        startTime: { type: "string" },
+        endTime: { type: "string" },
+        displayName: { type: "string" },
+        groupTitle: { type: "string" },
+        instructor: { type: "string" },
+        note: { type: "string" },
+        overwrite: { type: "boolean" }
+      }
+    }
+  },
+  {
+    name: "clear_schedule_slot",
+    description: "Clear a schedule slot in the dirty workspace without saving until save_schedule is called.",
+    inputSchema: { type: "object", required: ["scheduleType", "startTime"], additionalProperties: false, properties: { scheduleType: { enum: ["group", "private"] }, dayOfWeek: daySchema(), date: { type: "string" }, startTime: { type: "string" } } }
+  },
+  {
+    name: "find_available_slots",
+    description: "Find available schedule slots by schedule type, date/day, time range, and duration.",
+    inputSchema: { type: "object", required: ["scheduleType"], additionalProperties: false, properties: { scheduleType: { enum: ["group", "private"] }, date: { type: "string" }, dayOfWeek: daySchema(), fromTime: { type: "string" }, toTime: { type: "string" }, duration: { type: "number" } } }
+  },
+  scheduleTypeTool("validate_schedule", "Validate duplicate slots, operating hours, holiday conflicts, time ranges, and Excel mapping warnings."),
+  {
+    name: "add_center_closure",
+    description: "Add a center-specific closure date. If existing schedule entries are present, returns warnings and requires confirmation semantics without deleting data.",
+    inputSchema: { type: "object", required: ["date"], additionalProperties: false, properties: { date: { type: "string" }, label: { type: "string" } } }
+  },
+  {
+    name: "remove_center_closure",
+    description: "Remove a center-specific closure date.",
+    inputSchema: { type: "object", required: ["date"], additionalProperties: false, properties: { date: { type: "string" } } }
+  },
+  {
+    name: "get_center_closures",
+    description: "Return locally stored center-specific closure dates.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} }
+  },
+  scheduleTypeTool("save_schedule", "Explicitly save the dirty schedule template and create a revision backup when replacing an existing saved template."),
+  {
+    name: "export_schedule",
+    description: "Export the current schedule to XLSX, preserving mapping metadata where possible and backing up an existing XLSX before writing.",
+    inputSchema: { type: "object", required: ["scheduleType"], additionalProperties: false, properties: { scheduleType: { enum: ["group", "private"] }, filename: { type: "string" } } }
+  },
+  {
+    name: "create_schedule_poster",
+    description: "Create a Phase 1 poster from public-safe schedule data. Private displayName values are excluded by default.",
+    inputSchema: { type: "object", required: ["scheduleType", "title"], additionalProperties: false, properties: { scheduleType: { enum: ["group", "private"] }, weekStart: { type: "string" }, title: { type: "string" }, render: { anyOf: [{ const: false }, { type: "object", properties: { png: { type: "boolean" }, pdf: { type: "boolean" }, size: { enum: ["instagram-portrait", "instagram-square", "story", "a4-portrait"] } } }] } } }
   }
 ];
+
+function scheduleSettingsSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      weekDisplay: { enum: ["mon-fri", "mon-sat", "mon-sun"] },
+      openingTime: { type: "string" },
+      closingTime: { type: "string" },
+      defaultSlotMinutes: { type: "number" },
+      autoHolidayMarking: { type: "boolean" },
+      locale: { type: "string" },
+      countryCode: { type: "string" }
+    }
+  };
+}
+
+function daySchema() {
+  return { enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] };
+}
+
+function scheduleTypeTool(name: string, description: string) {
+  return {
+    name,
+    description,
+    inputSchema: { type: "object", required: ["scheduleType"], additionalProperties: false, properties: { scheduleType: { enum: ["group", "private"] } } }
+  };
+}
 
 function createPosterSchema(name: string, description: string) {
   return {

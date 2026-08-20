@@ -35,6 +35,17 @@ data/
     poster-<poster-id>.json
   config/
     center-profile.json
+  schedules/
+    settings.json
+    center-closures.json
+    group/
+      template.json
+      group_schedule.xlsx
+      revisions/
+    private/
+      template.json
+      private_schedule.xlsx
+      revisions/
 ```
 
 ## Install
@@ -53,6 +64,20 @@ npm run dev
 ```
 
 `PILATES_MCP_DATA_DIR` can point the archive to another local data directory. If unset, the server uses `./data`.
+
+## Railway Deployment
+
+Railway deployment is configured with `railway.json` and `Dockerfile`.
+
+The production container uses the official Playwright image so Chromium runtime dependencies are available for PNG/PDF rendering. Railway starts `npm run start:railway`, which exposes:
+
+- `GET /health`: deployment healthcheck
+- `GET /tools`: MCP tool summary for deployment inspection
+- `GET /schedule`: lightweight Excel-style Schedule Workspace
+
+The stdio MCP server remains available through `npm run start` for MCP clients that connect by command. The Railway health process is intentionally separate because stdio MCP does not expose an HTTP port.
+
+For persistent local-first archive storage on Railway, mount a Railway volume at `/data` or set `PILATES_MCP_DATA_DIR` to another persistent path.
 
 ## MCP Client Connection
 
@@ -74,6 +99,8 @@ Use the built server as a stdio MCP command:
 
 ## Tools
 
+Poster tools:
+
 - `get_center_profile`
 - `update_center_profile`
 - `search_posters`
@@ -86,6 +113,26 @@ Use the built server as a stdio MCP command:
 - `add_design_feedback`
 - `get_design_feedback`
 - `recommend_poster_style`
+
+Schedule tools:
+
+- `get_schedule_settings`
+- `update_schedule_settings`
+- `inspect_schedule_file`
+- `import_schedule_file`
+- `create_schedule_template`
+- `get_schedule`
+- `generate_weekly_schedule`
+- `set_schedule_slot`
+- `clear_schedule_slot`
+- `find_available_slots`
+- `validate_schedule`
+- `add_center_closure`
+- `remove_center_closure`
+- `get_center_closures`
+- `save_schedule`
+- `export_schedule`
+- `create_schedule_poster`
 
 ## Poster Creation Flow
 
@@ -221,11 +268,91 @@ Example:
 
 HTML/CSS are the source of truth. PNG/PDF are optional rendered artifacts.
 
+## Schedule Workspace
+
+Phase 2 adds a local-first Schedule Workspace for Pilates group/private timetables. It is not a CRM. Private schedules may contain `displayName` only for grid display and operational placement.
+
+Core model:
+
+- `ScheduleSettings`: week display, opening/closing time, default slot minutes, holiday option, locale, country code
+- `ScheduleTemplate`: explicit-save weekly group/private template
+- `ScheduleSlot`: neutral domain slot separate from Excel cells
+- `ScheduleTemplateMapping`: XLSX worksheet/header/time/day-column mapping
+- `CenterClosure`: center-specific closed dates, separate from national holidays
+
+`set_schedule_slot` changes an in-memory dirty workspace. It is not persisted until `save_schedule` is called. `export_schedule` writes XLSX and backs up an existing XLSX before replacing it.
+
+Existing XLSX files are handled by `inspect_schedule_file` and `import_schedule_file`. The importer captures worksheet name, used range, day columns, time column, column widths, row heights, and merges where available. Formulas are not executed.
+
+Holiday handling is provider-based. Phase 2 includes a local provider with basic KR holiday fixtures and can be replaced later by an external provider without changing the domain model. Center closures have priority over public holidays, but occupied slots are not silently deleted; warnings are returned.
+
+Railway serves a lightweight Excel-style workspace at `/schedule` with sticky headers, direct cell editing, delete/backspace, and visible save state. MCP remains the source of actual schedule operations.
+
+### Schedule Examples
+
+Scenario A, create a new group timetable when no file exists:
+
+```json
+{
+  "scheduleType": "group",
+  "settings": {
+    "weekDisplay": "mon-sat",
+    "openingTime": "09:00",
+    "closingTime": "21:00",
+    "defaultSlotMinutes": 60,
+    "autoHolidayMarking": true,
+    "locale": "ko-KR",
+    "countryCode": "KR"
+  }
+}
+```
+
+Scenario B, import an existing Excel file and generate next week:
+
+```json
+{ "filePath": "fixtures/group_schedule.xlsx", "scheduleType": "group" }
+```
+
+```json
+{
+  "scheduleType": "group",
+  "weekStart": "2026-10-05",
+  "applyHolidays": true,
+  "applyCenterClosures": true
+}
+```
+
+Scenario C, private schedule operation:
+
+```json
+{
+  "scheduleType": "private",
+  "dayOfWeek": "monday",
+  "startTime": "19:00",
+  "displayName": "김OO"
+}
+```
+
+Scenario D, group schedule poster:
+
+```json
+{
+  "scheduleType": "group",
+  "weekStart": "2026-10-05",
+  "title": "9월 그룹레슨 시간표",
+  "render": { "png": true, "pdf": true, "size": "instagram-portrait" }
+}
+```
+
 ## Security And Privacy
 
 The archive uses generated poster IDs and validates poster IDs before file access. Archive-relative imports are checked to block `../` traversal and root escape. Generated poster HTML is static, user text is HTML-escaped, and remote scripts are not part of the template. Rendering disables JavaScript.
 
 Phase 1 excludes member management, reservations, payments, SMS, Instagram posting, StudioMate integration, external design scraping, image generation AI, cloud DB requirements, and SaaS authentication.
+
+Phase 2 permits only `displayName` as person-related schedule display data. It does not create fields for phone, email, address, birth date, gender, health condition, medical history, payment, membership, consultation, attendance profile, or marketing consent. Names are not used for profiling, analytics, poster feedback, marketing, or recommendations.
+
+Phase 2 still excludes StudioMate integration, StudioMate scraping, Chrome extension automation, member CRM, contact management, payment management, attendance analysis, member preference profiling, automatic booking confirmation, SMS, KakaoTalk, Instagram posting, payroll, settlement, and complex ERP features.
 
 ## Extension Points
 
