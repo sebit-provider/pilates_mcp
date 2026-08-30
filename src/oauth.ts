@@ -114,6 +114,7 @@ export class OAuthServer {
       html: page(
         "Authorize pilates_mcp",
         `<form method="post" action="/authorize">
+          ${hidden("response_type", url.searchParams.get("response_type"))}
           ${hidden("client_id", url.searchParams.get("client_id"))}
           ${hidden("redirect_uri", url.searchParams.get("redirect_uri"))}
           ${hidden("state", url.searchParams.get("state"))}

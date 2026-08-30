@@ -63,3 +63,22 @@ test("supports dynamic client registration and authorization_code with PKCE", as
   assert.equal(typeof token.access_token, "string");
   assert.equal(oauth.verifyRequest(fakeRequest({ authorization: `Bearer ${token.access_token}` })).ok, true);
 });
+
+test("authorization page preserves response_type for password form post", () => {
+  const oauth = new OAuthServer("secret");
+  const client = oauth.register({
+    client_name: "ChatGPT",
+    redirect_uris: ["https://chat.openai.com/aip/callback"]
+  });
+  const page = oauth.authorizePage(
+    `http://127.0.0.1:3000/authorize?${new URLSearchParams({
+      response_type: "code",
+      client_id: client.client_id,
+      redirect_uri: "https://chat.openai.com/aip/callback",
+      code_challenge: challenge("test-verifier-123456789"),
+      code_challenge_method: "S256"
+    })}`
+  );
+  assert.equal(page.status, 200);
+  assert.match(page.html, /name="response_type" value="code"/);
+});
