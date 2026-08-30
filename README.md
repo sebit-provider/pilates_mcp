@@ -87,6 +87,8 @@ Set these Railway variables for ChatGPT remote MCP OAuth:
 - `PILATES_MCP_PUBLIC_URL`: canonical public origin, for example `https://your-service.up.railway.app`
 - `PILATES_MCP_AUTH_DISABLED`: optional local-only escape hatch; set to `true` only for local development
 
+`PILATES_MCP_PUBLIC_URL` must use the same origin as the MCP URL configured in ChatGPT. For example, if ChatGPT uses `https://pilates-mcp.com/mcp`, set `PILATES_MCP_PUBLIC_URL=https://pilates-mcp.com`. Do not mix it with `https://mcp.pilates-mcp.com` unless that subdomain is the actual MCP URL and all well-known OAuth endpoints are served from that same subdomain.
+
 OAuth endpoints:
 
 - `/.well-known/oauth-protected-resource`
