@@ -74,8 +74,10 @@ The production container uses the official Playwright image so Chromium runtime 
 - `GET /health`: deployment healthcheck
 - `GET /tools`: MCP tool summary for deployment inspection
 - `GET /schedule`: lightweight Excel-style Schedule Workspace
+- `GET /mcp`: MCP HTTP endpoint info
+- `POST /mcp`: JSON-RPC MCP endpoint for `initialize`, `tools/list`, and `tools/call`
 
-The stdio MCP server remains available through `npm run start` for MCP clients that connect by command. The Railway health process is intentionally separate because stdio MCP does not expose an HTTP port.
+The stdio MCP server remains available through `npm run start` for MCP clients that connect by command. Railway uses `POST /mcp` for HTTP JSON-RPC MCP calls.
 
 For persistent local-first archive storage on Railway, mount a Railway volume at `/data` or set `PILATES_MCP_DATA_DIR` to another persistent path.
 
@@ -95,6 +97,20 @@ Use the built server as a stdio MCP command:
     }
   }
 }
+```
+
+For HTTP-capable MCP clients, point the client at:
+
+```text
+https://<railway-domain>/mcp
+```
+
+Example JSON-RPC call:
+
+```bash
+curl -X POST https://<railway-domain>/mcp \
+  -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
 ## Tools
