@@ -8,6 +8,7 @@ type ClientRecord = {
   client_name?: string;
   redirect_uris: string[];
   scope?: string;
+  token_endpoint_auth_method: "none" | "client_secret_post" | "client_secret_basic";
 };
 
 type AuthCodeRecord = {
@@ -53,7 +54,7 @@ export class OAuthServer {
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
-      token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+      token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
       scopes_supported: scopes
     };
   }
@@ -88,12 +89,16 @@ export class OAuthServer {
   register(input: Record<string, unknown>): ClientRecord & { client_id_issued_at: number; client_secret_expires_at: number } {
     const redirectUris = Array.isArray(input.redirect_uris) ? input.redirect_uris.map(String) : [];
     if (redirectUris.length === 0) throw new Error("redirect_uris is required");
+    const requestedAuthMethod = typeof input.token_endpoint_auth_method === "string" ? input.token_endpoint_auth_method : "none";
+    const tokenEndpointAuthMethod =
+      requestedAuthMethod === "client_secret_post" || requestedAuthMethod === "client_secret_basic" ? requestedAuthMethod : "none";
     const client: ClientRecord = {
       client_id: `client_${randomToken(18)}`,
-      client_secret: randomToken(32),
+      client_secret: tokenEndpointAuthMethod === "none" ? undefined : randomToken(32),
       client_name: typeof input.client_name === "string" ? input.client_name : "MCP Client",
       redirect_uris: redirectUris,
-      scope: typeof input.scope === "string" ? input.scope : scopes.join(" ")
+      scope: typeof input.scope === "string" ? input.scope : scopes.join(" "),
+      token_endpoint_auth_method: tokenEndpointAuthMethod
     };
     clients.set(client.client_id, client);
     return { ...client, client_id_issued_at: Math.floor(Date.now() / 1000), client_secret_expires_at: 0 };
@@ -156,37 +161,50 @@ export class OAuthServer {
     return { status: 302, location: redirect.toString() };
   }
 
-  token(body: string): Record<string, unknown> {
+  token(body: string, authorizationHeader?: string): Record<string, unknown> {
     const form = new URLSearchParams(body);
     const grant = form.get("grant_type");
-    if (grant === "authorization_code") return this.authorizationCodeToken(form);
-    if (grant === "refresh_token") return this.refreshTokenGrant(form);
+    if (grant === "authorization_code") return this.authorizationCodeToken(form, authorizationHeader);
+    if (grant === "refresh_token") return this.refreshTokenGrant(form, authorizationHeader);
     throw new Error("unsupported_grant_type");
   }
 
-  private authorizationCodeToken(form: URLSearchParams): Record<string, unknown> {
+  private authorizationCodeToken(form: URLSearchParams, authorizationHeader?: string): Record<string, unknown> {
     const code = required(form, "code");
     const record = codes.get(code);
     if (!record) throw new Error("invalid_grant");
     codes.delete(code);
     if (record.expiresAt <= Date.now()) throw new Error("expired_code");
-    if (required(form, "client_id") !== record.client_id) throw new Error("invalid_client");
+    const clientId = form.get("client_id") ?? basicCredentials(authorizationHeader)?.clientId;
+    if (clientId !== record.client_id) throw new Error("invalid_client");
     if (required(form, "redirect_uri") !== record.redirect_uri) throw new Error("invalid_grant");
     if (record.code_challenge_method !== "S256") throw new Error("unsupported_code_challenge_method");
     if (pkceChallenge(required(form, "code_verifier")) !== record.code_challenge) throw new Error("invalid_grant");
     const client = clients.get(record.client_id);
-    const secret = form.get("client_secret");
-    if (secret && client?.client_secret !== secret) throw new Error("invalid_client");
+    this.verifyClientAuthentication(client, form, authorizationHeader);
     return issueToken(record.client_id, record.scope, record.resource);
   }
 
-  private refreshTokenGrant(form: URLSearchParams): Record<string, unknown> {
+  private refreshTokenGrant(form: URLSearchParams, authorizationHeader?: string): Record<string, unknown> {
     const refresh = required(form, "refresh_token");
     const existing = refreshTokens.get(refresh);
     if (!existing) throw new Error("invalid_grant");
+    this.verifyClientAuthentication(clients.get(existing.client_id), form, authorizationHeader);
     refreshTokens.delete(refresh);
     tokens.delete(existing.accessToken);
     return issueToken(existing.client_id, existing.scope, existing.resource);
+  }
+
+  private verifyClientAuthentication(client: ClientRecord | undefined, form: URLSearchParams, authorizationHeader?: string): void {
+    if (!client || client.token_endpoint_auth_method === "none") return;
+    if (client.token_endpoint_auth_method === "client_secret_post") {
+      if (form.get("client_secret") !== client.client_secret) throw new Error("invalid_client");
+      return;
+    }
+    const credentials = basicCredentials(authorizationHeader);
+    if (!credentials || credentials.clientId !== client.client_id || credentials.clientSecret !== client.client_secret) {
+      throw new Error("invalid_client");
+    }
   }
 
   private validateAuthorizeParams(params: URLSearchParams): string | null {
@@ -249,6 +267,17 @@ function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function basicCredentials(header?: string): { clientId: string; clientSecret: string } | null {
+  if (!header?.startsWith("Basic ")) return null;
+  const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
+  const separator = decoded.indexOf(":");
+  if (separator === -1) return null;
+  return {
+    clientId: decodeURIComponent(decoded.slice(0, separator)),
+    clientSecret: decodeURIComponent(decoded.slice(separator + 1))
+  };
 }
 
 function hidden(name: string, value: string | null): string {

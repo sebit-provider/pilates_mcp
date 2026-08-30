@@ -75,7 +75,7 @@ async function handleHttp(request: http.IncomingMessage, response: http.ServerRe
       return;
     }
     try {
-      writeJson(response, 200, oauth.token(await readBody(request)), { "cache-control": "no-store", pragma: "no-cache" });
+      writeJson(response, 200, oauth.token(await readBody(request), request.headers.authorization), { "cache-control": "no-store", pragma: "no-cache" });
     } catch (error) {
       writeJson(response, 400, { error: (error as Error).message });
     }

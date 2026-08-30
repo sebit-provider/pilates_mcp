@@ -31,6 +31,8 @@ test("supports dynamic client registration and authorization_code with PKCE", as
     client_name: "ChatGPT",
     redirect_uris: ["https://chat.openai.com/aip/callback"]
   });
+  assert.equal(client.token_endpoint_auth_method, "none");
+  assert.equal(client.client_secret, undefined);
   const verifier = "test-verifier-123456789";
   const authBody = new URLSearchParams({
     response_type: "code",
@@ -62,6 +64,42 @@ test("supports dynamic client registration and authorization_code with PKCE", as
   assert.equal(token.token_type, "Bearer");
   assert.equal(typeof token.access_token, "string");
   assert.equal(oauth.verifyRequest(fakeRequest({ authorization: `Bearer ${token.access_token}` })).ok, true);
+});
+
+test("supports confidential clients using client_secret_basic", async () => {
+  const oauth = new OAuthServer("secret");
+  const client = oauth.register({
+    client_name: "ChatGPT",
+    redirect_uris: ["https://chat.openai.com/aip/callback"],
+    token_endpoint_auth_method: "client_secret_basic"
+  });
+  assert.equal(client.token_endpoint_auth_method, "client_secret_basic");
+  assert.ok(client.client_secret);
+  const verifier = "test-verifier-123456789";
+  const authorized = await oauth.authorizePost(
+    new URLSearchParams({
+      response_type: "code",
+      client_id: client.client_id,
+      redirect_uri: "https://chat.openai.com/aip/callback",
+      code_challenge: challenge(verifier),
+      code_challenge_method: "S256",
+      password: "secret"
+    }).toString()
+  );
+  assert.equal(authorized.status, 302);
+  const code = new URL(String(authorized.location)).searchParams.get("code");
+  assert.ok(code);
+  const basic = Buffer.from(`${encodeURIComponent(client.client_id)}:${encodeURIComponent(client.client_secret)}`).toString("base64");
+  const token = oauth.token(
+    new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: "https://chat.openai.com/aip/callback",
+      code_verifier: verifier
+    }).toString(),
+    `Basic ${basic}`
+  );
+  assert.equal(token.token_type, "Bearer");
 });
 
 test("authorization page preserves response_type for password form post", () => {
