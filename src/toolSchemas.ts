@@ -1,4 +1,4 @@
-export const toolSchemas = [
+const baseToolSchemas = [
   {
     name: "get_center_profile",
     description: "Return the local Pilates center profile and poster defaults. Use before poster generation.",
@@ -365,3 +365,247 @@ function contentSchema() {
     }
   };
 }
+
+type JsonSchema = {
+  type?: string | string[];
+  enum?: string[];
+  const?: string | boolean;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  additionalProperties?: boolean | JsonSchema;
+  anyOf?: JsonSchema[];
+};
+
+function outputObject(description: string, properties: Record<string, JsonSchema> = {}, required: string[] = []): JsonSchema {
+  return {
+    type: "object",
+    description,
+    additionalProperties: true,
+    properties,
+    ...(required.length > 0 ? { required } : {})
+  };
+}
+
+function stringArray(description?: string): JsonSchema {
+  return { type: "array", description, items: { type: "string" } };
+}
+
+const posterMetadataOutput = outputObject("Archived poster metadata used for search, reuse, and poster provenance.", {
+  id: { type: "string" },
+  title: { type: "string" },
+  eventName: { type: "string" },
+  year: { type: "number" },
+  month: { type: "number" },
+  createdAt: { type: "string" },
+  updatedAt: { type: "string" },
+  layout: { enum: ["table", "standard"] },
+  purpose: { enum: ["event", "price", "notice", "schedule", "promotion", "other"] },
+  style: { type: "string" },
+  mood: stringArray(),
+  tags: stringArray(),
+  status: { enum: ["draft", "used", "archived"] },
+  sourcePosterId: { type: ["string", "null"] },
+  programCategories: { type: "array", items: { enum: ["group", "private", "duet", "other"] } },
+  programSeparation: { enum: ["none", "section", "color", "table", "card"] },
+  tablePreference: { enum: ["required", "preferred", "none"] },
+  tableStyle: { enum: ["single", "split", "grouped", "comparison", "price-list"] },
+  vatPolicy: { enum: ["included", "excluded", "not_applicable", "unspecified"] }
+});
+
+const pathOutput = { type: "string", description: "Local archive-relative path returned for client display or reuse." };
+
+const posterOperationOutput = outputObject("Poster creation or reuse result. If valid is false, the client should ask only the returned questions before retrying.", {
+  valid: { type: "boolean" },
+  missing: stringArray("Required PosterBrief fields that were not supplied or covered by center defaults."),
+  questions: stringArray("User-facing questions needed before poster generation can continue."),
+  posterId: { type: "string" },
+  htmlPath: pathOutput,
+  cssPath: pathOutput,
+  metadataPath: pathOutput,
+  previewPath: pathOutput,
+  pdfPath: pathOutput,
+  renderErrors: stringArray("Non-fatal render failures. HTML/CSS may still have been saved."),
+  appliedFeedback: { type: "array", items: outputObject("Design feedback item that was considered during generation.") }
+});
+
+const scheduleSlotOutput = outputObject("Neutral schedule slot. Private schedules may contain displayName only; CRM fields are not part of this schema.", {
+  id: { type: "string" },
+  scheduleType: { enum: ["group", "private"] },
+  date: { type: "string" },
+  dayOfWeek: daySchema(),
+  startTime: { type: "string" },
+  endTime: { type: "string" },
+  displayName: { type: "string" },
+  groupTitle: { type: "string" },
+  instructor: { type: "string" },
+  status: { enum: ["available", "occupied", "holiday", "center_closed"] },
+  note: { type: "string" }
+});
+
+const scheduleSettingsOutput = outputObject("Center schedule defaults used to create weekly templates and apply holiday behavior.", {
+  weekDisplay: { enum: ["mon-fri", "mon-sat", "mon-sun"] },
+  openingTime: { type: "string" },
+  closingTime: { type: "string" },
+  defaultSlotMinutes: { type: "number" },
+  autoHolidayMarking: { type: "boolean" },
+  locale: { type: "string" },
+  countryCode: { type: "string" }
+});
+
+const scheduleTemplateOutput = outputObject("Schedule workspace state, including save state so clients know whether explicit save is still needed.", {
+  scheduleType: { enum: ["group", "private"] },
+  settings: scheduleSettingsOutput,
+  slots: { type: "array", items: scheduleSlotOutput },
+  mapping: outputObject("Optional Excel template mapping used for import/export."),
+  sourceFilePath: { type: "string" },
+  saveState: { enum: ["clean", "dirty", "saving", "saved", "error"] }
+});
+
+const centerClosureOutput = outputObject("Center-specific closure separate from national holidays.", {
+  date: { type: "string" },
+  label: { type: "string" }
+});
+
+const outputSchemas: Record<string, JsonSchema> = {
+  get_center_profile: outputObject("Local center profile and poster defaults. Contains no member personal data."),
+  update_center_profile: outputObject("Updated local center profile and poster defaults. Contains no member personal data."),
+  create_poster: posterOperationOutput,
+  update_poster: outputObject("Updated poster result with source paths and refreshed metadata.", {
+    posterId: { type: "string" },
+    htmlPath: pathOutput,
+    cssPath: pathOutput,
+    metadataPath: pathOutput,
+    revisionPath: pathOutput,
+    metadata: posterMetadataOutput
+  }),
+  search_posters: outputObject("Poster search result list.", {
+    items: { type: "array", items: posterMetadataOutput }
+  }, ["items"]),
+  get_poster: outputObject("Complete archived poster source and metadata.", {
+    metadata: posterMetadataOutput,
+    content: contentSchema(),
+    theme: outputObject("Poster theme tokens used by CSS variables."),
+    html: { type: "string" },
+    css: { type: "string" },
+    paths: outputObject("Archive-relative poster source and artifact paths.")
+  }),
+  reuse_poster_template: posterOperationOutput,
+  import_poster: outputObject("Imported poster archive location.", {
+    posterId: { type: "string" },
+    htmlPath: pathOutput,
+    cssPath: pathOutput,
+    metadataPath: pathOutput,
+    contentPath: pathOutput
+  }),
+  render_poster: outputObject("Poster render artifacts produced from saved HTML/CSS source.", {
+    posterId: { type: "string" },
+    previewPath: pathOutput,
+    pdfPath: pathOutput,
+    renderErrors: stringArray()
+  }),
+  add_design_feedback: outputObject("Stored design feedback item.", {
+    id: { type: "string" },
+    scope: { enum: ["global", "table", "standard", "poster"] },
+    posterId: { type: "string" },
+    text: { type: "string" },
+    createdAt: { type: "string" },
+    active: { type: "boolean" }
+  }),
+  get_design_feedback: outputObject("Design feedback items relevant to future generation.", {
+    items: { type: "array", items: outputObject("Design feedback item.") }
+  }, ["items"]),
+  recommend_poster_style: outputObject("Local-history-based poster style and structure recommendation.", {
+    recommendedLayout: { enum: ["table", "standard"] },
+    recommendedTableStyle: { enum: ["single", "split", "grouped", "comparison", "price-list"] },
+    recommendedProgramSeparation: { enum: ["none", "section", "color", "table", "card"] },
+    recommendedStyle: { type: "string" },
+    recommendedMood: stringArray(),
+    referencePosterIds: stringArray(),
+    reason: stringArray(),
+    feedback: { type: "array", items: outputObject("Feedback item used as recommendation evidence.") }
+  }),
+  get_schedule_settings: scheduleSettingsOutput,
+  update_schedule_settings: scheduleSettingsOutput,
+  inspect_schedule_file: outputObject("Read-only XLSX inspection result. Formula execution is not used.", {
+    filePath: { type: "string" },
+    mapping: outputObject("Inferred Excel template mapping."),
+    worksheet: { type: "string" },
+    usedRange: outputObject("Used worksheet range."),
+    mergedCells: { type: "array", items: { type: "string" } },
+    columnWidths: outputObject("Column width map."),
+    rowHeights: outputObject("Row height map."),
+    values: { type: "array", items: { type: "array", items: { type: ["string", "number", "boolean", "null"] } } }
+  }),
+  import_schedule_file: scheduleTemplateOutput,
+  create_schedule_template: outputObject("Template creation result. Invalid results include missing fields and questions instead of guessing settings.", {
+    valid: { type: "boolean" },
+    missing: stringArray(),
+    questions: stringArray(),
+    scheduleType: { enum: ["group", "private"] },
+    template: scheduleTemplateOutput,
+    saveState: { enum: ["clean", "dirty", "saving", "saved", "error"] }
+  }),
+  get_schedule: scheduleTemplateOutput,
+  generate_weekly_schedule: outputObject("Generated unsaved weekly schedule result.", {
+    scheduleType: { enum: ["group", "private"] },
+    weekStart: { type: "string" },
+    slots: { type: "array", items: scheduleSlotOutput },
+    holidays: { type: "array", items: outputObject("Holiday applied to generated slots.") },
+    centerClosures: { type: "array", items: centerClosureOutput },
+    saveState: { enum: ["clean", "dirty", "saving", "saved", "error"] }
+  }),
+  set_schedule_slot: outputObject("Schedule slot mutation result. Conflicts are returned unless overwrite was explicit.", {
+    success: { type: "boolean" },
+    slot: scheduleSlotOutput,
+    saveState: { enum: ["clean", "dirty", "saving", "saved", "error"] },
+    conflicts: { type: "array", items: outputObject("Slot conflict that prevented overwrite.") }
+  }),
+  clear_schedule_slot: outputObject("Schedule slot clear result.", {
+    success: { type: "boolean" },
+    slot: scheduleSlotOutput,
+    saveState: { enum: ["clean", "dirty", "saving", "saved", "error"] }
+  }),
+  find_available_slots: outputObject("Available schedule slots matching the requested time filters.", {
+    availableSlots: { type: "array", items: outputObject("Available time range.", {
+      date: { type: "string" },
+      dayOfWeek: daySchema(),
+      startTime: { type: "string" },
+      endTime: { type: "string" }
+    }) }
+  }, ["availableSlots"]),
+  validate_schedule: outputObject("Structured schedule validation result.", {
+    valid: { type: "boolean" },
+    issues: { type: "array", items: outputObject("Validation issue with severity, code, message, and optional slot id.") }
+  }),
+  add_center_closure: outputObject("Center closure add result with warnings when existing schedule entries are present.", {
+    closure: centerClosureOutput,
+    warnings: stringArray(),
+    requiresConfirmation: { type: "boolean" }
+  }),
+  remove_center_closure: outputObject("Center closure removal result.", {
+    removed: { type: "boolean" },
+    date: { type: "string" }
+  }),
+  get_center_closures: outputObject("Stored center-specific closure dates.", {
+    items: { type: "array", items: centerClosureOutput }
+  }, ["items"]),
+  save_schedule: outputObject("Explicit schedule save result.", {
+    success: { type: "boolean" },
+    saveState: { enum: ["clean", "dirty", "saving", "saved", "error"] },
+    template: scheduleTemplateOutput,
+    error: { type: "string" }
+  }),
+  export_schedule: outputObject("XLSX export result.", {
+    scheduleType: { enum: ["group", "private"] },
+    filePath: { type: "string" },
+    backupCreated: { type: "boolean" }
+  }),
+  create_schedule_poster: posterOperationOutput
+};
+
+export const toolSchemas = baseToolSchemas.map((tool) => ({
+  ...tool,
+  outputSchema: outputSchemas[tool.name] ?? outputObject("Tool result.")
+}));

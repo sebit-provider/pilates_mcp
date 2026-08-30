@@ -21,6 +21,21 @@ export interface McpResponse {
   };
 }
 
+interface McpToolCallResult {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent: Record<string, unknown>;
+}
+
+function toStructuredContent(result: unknown): Record<string, unknown> {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return result as Record<string, unknown>;
+  }
+  if (Array.isArray(result)) {
+    return { items: result };
+  }
+  return { result };
+}
+
 export class McpApp {
   private readonly posters: PosterService;
   private readonly schedules: ScheduleService;
@@ -93,7 +108,11 @@ export class McpApp {
       const method = this.methods[name];
       if (!method) throw new Error(`Unknown tool: ${name}`);
       const result = await method(args);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      const structuredContent = toStructuredContent(result);
+      return {
+        content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],
+        structuredContent
+      } satisfies McpToolCallResult;
     }
     if (request.method === "notifications/initialized") return {};
     throw new Error(`Unsupported method: ${request.method}`);

@@ -133,6 +133,14 @@ curl -X POST https://<railway-domain>/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
+## MCP Output Schemas
+
+Every MCP tool publishes an `outputSchema` through `tools/list`. This tells ChatGPT and other MCP clients what structured JSON shape to expect before they call a tool.
+
+Tool calls also return `structuredContent` alongside the human-readable JSON text response. The text response is kept for compatibility, while `structuredContent` is the preferred machine-readable result for agents. For example, `create_poster` can return `valid: false` with `missing` fields and `questions`, `search_posters` returns an `items` array, and schedule mutation tools return `success`, `conflicts`, and `saveState`.
+
+This matters for this server because many tools are workflow tools, not one-shot generators. The schema helps the agent understand when it must ask for missing poster settings, when explicit schedule save is still required, and how to safely inspect conflicts or render artifact paths.
+
 ## Tools
 
 Poster tools:
