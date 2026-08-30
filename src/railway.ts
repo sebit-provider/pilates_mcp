@@ -57,6 +57,7 @@ async function handleHttp(request: http.IncomingMessage, response: http.ServerRe
     if (request.method === "POST") {
       const result = await oauth.authorizePost(await readBody(request));
       if (result.location) {
+        console.log(`OAuth authorization approved; redirecting client to ${result.location}`);
         response.writeHead(result.status, { location: result.location });
         response.end();
       } else {

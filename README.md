@@ -77,7 +77,7 @@ The production container uses the official Playwright image so Chromium runtime 
 - `GET /mcp`: MCP HTTP endpoint info
 - `POST /mcp`: JSON-RPC MCP endpoint for `initialize`, `tools/list`, and `tools/call`
 
-The stdio MCP server remains available through `npm run start` for MCP clients that connect by command. Railway uses `POST /mcp` for HTTP JSON-RPC MCP calls.
+The stdio MCP server remains available through `npm run start:stdio` for MCP clients that connect by command. Railway uses `npm start` and `POST /mcp` for HTTP JSON-RPC MCP calls.
 
 For persistent local-first archive storage on Railway, mount a Railway volume at `/data` or set `PILATES_MCP_DATA_DIR` to another persistent path.
 
@@ -96,6 +96,8 @@ OAuth endpoints:
 - `/register`
 - `/authorize`
 - `/token`
+
+If authorization finishes and the browser shows a `502` for a URL like `http://127.0.0.1:<port>`, that URL is the MCP client's local OAuth callback, not the Railway service. Check that the ChatGPT/Codex client connection flow is still active and that local callback URLs are not blocked by browser, firewall, proxy, or VPN settings.
 
 ## MCP Client Connection
 
