@@ -81,6 +81,22 @@ The stdio MCP server remains available through `npm run start` for MCP clients t
 
 For persistent local-first archive storage on Railway, mount a Railway volume at `/data` or set `PILATES_MCP_DATA_DIR` to another persistent path.
 
+Set these Railway variables for ChatGPT remote MCP OAuth:
+
+- `PILATES_MCP_OAUTH_PASSWORD`: owner password shown during `/authorize` approval
+- `PILATES_MCP_PUBLIC_URL`: canonical public origin, for example `https://your-service.up.railway.app`
+- `PILATES_MCP_AUTH_DISABLED`: optional local-only escape hatch; set to `true` only for local development
+
+OAuth endpoints:
+
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/oauth-protected-resource/mcp`
+- `/.well-known/oauth-authorization-server`
+- `/.well-known/openid-configuration`
+- `/register`
+- `/authorize`
+- `/token`
+
 ## MCP Client Connection
 
 Use the built server as a stdio MCP command:
